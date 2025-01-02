@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Word Count Essays</title>
+    <style>
+        * {
+            box-sizing: border-box; margin: 0; padding: 0;
+            transition: background-color 0.25s, color 0.25s ease, border-color 0.25s;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        body {
+            display: flex; min-height: 100vh; background-color: #f8f8f8; color: #111;
+        }
+        body.dark-mode {
+            background-color: #222; color: #eee;
+        }
+        .sidebar {
+            width: 250px; background-color: #f0f0f0; padding: 1rem; transition: transform 0.25s;
+            z-index: 9999; /* ensure sidebar is above main on mobile */
+            position: fixed;
+            height: 100%;
+        }
+        body.dark-mode .sidebar { background-color: #333; }
+        .sidebar.hidden { transform: translateX(-260px); }
+        .hamburger { cursor: pointer; margin-bottom: 1rem; background-color: #ddd; padding: 10px; border-radius: 10px;}
+        .hamburger:hover { background-color: #ccc; }
+        body.dark-mode .hamburger { background-color: #444; }
+        body.dark-mode .hamburger:hover { background-color: #111; }
+        .tabs { margin-top: 1rem; }
+        .tab {
+            display: flex; justify-content: space-between; align-items: center;
+            margin: 0.4rem 0; padding: 0.6rem; border-radius: 6px; background-color: #fff;
+            cursor: pointer; font-size: 0.95rem; transition: background-color 0.25s;
+        }
+        body.dark-mode .tab {
+            background-color: #444; color: #ddd;
+        }
+        .tab.active { border-left: 4px solid green; }
+        .tab.pinned { font-weight: bold; }
+        .tab:hover { opacity: 0.8; }
+        .pin-btn, .delete-btn {
+            margin-left: 0.5rem; cursor: pointer; -webkit-user-select: none; user-select: none;
+        }
+        .main {
+            flex: 1; padding: 1rem; display: flex; flex-direction: column;
+            align-items: center; max-width: 600px; margin: 0 auto; position: relative;
+            z-index: 1; /* main now behind sidebar */
+        }
+        .top-bar {
+            width: 100%; max-width: 700px;
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+        .dark-toggle { cursor: pointer; margin-bottom: 1rem; background-color: #ddd; padding: 10px; border-radius: 10px;}
+        .dark-toggle:hover { background-color: #ccc; }
+        body.dark-mode .dark-toggle { background-color: #444; color: #fff; }
+        body.dark-mode .dark-toggle:hover { background-color: #111; }
+        .field {
+            width: 100%; max-width: 700px; margin-bottom: 1rem; display: flex; flex-direction: column;
+        }
+        .field label { margin-bottom: 0.3rem; font-size: 0.95rem; }
+        .field textarea, .field input {
+            width: 100%; margin: 0 auto; display: block;
+            border: 1px solid #ccc; border-radius: 6px; padding: 0.5rem; font-size: 1rem;
+            background-color: #fff; color: #111;
+        }
+        body.dark-mode .field textarea, body.dark-mode .field input {
+            background-color: #555; color: #eee;
+        }
+        #promptInput { height: auto; resize: none; }
+        #essayInput { min-height: 300px; max-height: 800px; max-width: 568px; min-width: 568px;}
+        .counters {
+            margin-top: 0.5rem; font-size: 0.9rem; opacity: 0.7;
+        }
+        .create-btn {
+            margin-top: 1rem; padding: 0.5rem; border-radius: 6px;
+            background-color: #ddd; color: #111; border: none; cursor: pointer; font-size: 0.9rem;
+        }
+        .create-btn:hover { background-color: #ccc; }
+        body.dark-mode .create-btn { background-color: #555; color: #fff;}
+        body.dark-mode .create-btn:hover { background-color: #444;}
+        @media(max-width: 768px) {
+            .sidebar { top: 0; left: 0; height: 100%; }
+        }
+        .modal-backdrop {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            -webkit-backdrop-filter: blur(5px);
+            backdrop-filter: blur(5px);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000; opacity: 0; pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        .modal-backdrop.open {
+            opacity: 1; pointer-events: auto;
+        }
+        .modal-content {
+            background-color: #fff; padding: 1rem; border-radius: 8px;
+            max-width: 500px; width: 100%; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            transform: translateY(-20px); transition: transform 0.25s ease;
+        }
+        body.dark-mode .modal-content {
+            background-color: #444; color: #ddd;
+        }
+        .modal-backdrop.open .modal-content {
+            transform: translateY(0);
+        }
+        .modal-actions {
+            display: flex; justify-content: flex-end; margin-top: 1rem;
+        }
+        .modal-actions button {
+            padding: 0.5rem 1rem; border-radius: 4px; border: none;
+            cursor: pointer; transition: background-color 0.25s;
+            margin-left: 0.5rem;
+        }
+        .modal-actions button:hover {
+            filter: brightness(0.9);
+        }
+        .modal-cancel { background-color: #ccc; color: #000; }
+        body.dark-mode .modal-cancel { background-color: #666; color: #ddd; }
+        .modal-delete { background-color: #d00; color: #fff; }
+        body.dark-mode .modal-delete { background-color: #a00; }
+
+        /* Class for the essay text in the modal */
+        .modal-essay {
+            white-space: pre-wrap;
+            margin-top: 1rem;
+            border-radius: 4px;
+            padding: 0.5rem;
+            background-color: #f4f4f4;
+            font-family: 'Courier New', monospace;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        body.dark-mode .modal-essay {
+            background-color: #555;
+            color: #eee;
+        }
+        .start-modal-backdrop {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            -webkit-backdrop-filter: blur(5px);
+            backdrop-filter: blur(5px);
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.25s;
+            z-index: 2000;
+        }
+        .start-modal-backdrop.open { opacity: 1; pointer-events: auto; }
+        .start-modal-content {
+            background-color: #fff; padding: 1.5rem; border-radius: 8px;
+            max-width: 400px; width: 100%; text-align: center;
+            transform: translateY(-20px); transition: transform 0.25s;
+        }
+        body.dark-mode .start-modal-content { background-color: #444; color: #ddd; }
+        .start-modal-backdrop.open .start-modal-content { transform: translateY(0); }
+        .start-modal-title {
+            font-size: 1.5rem; margin-bottom: 1rem; font-weight: bold;
+        }
+        .start-modal-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .start-modal-essay {
+            background-color: #f0f0f0; padding: 0.5rem; border-radius: 4px;
+            cursor: pointer; transition: background-color 0.25s;
+        }
+        .start-modal-essay:hover { background-color: #ddd; }
+        body.dark-mode .start-modal-essay { background-color: #555; }
+        body.dark-mode .start-modal-essay:hover { background-color: #666; }
+        .create-new-block { margin: 10px }
+        .create-new { background-color: #eee; color: #111; padding: 0.5rem; border-radius: 6px; cursor: pointer; width: 150px; margin-left: 50%; transform: translateX(-50%); }
+        .create-new:hover { background-color: #ddd; }
+        body.dark-mode .create-new { background-color: #222; color: #fff;}
+        body.dark-mode .create-new:hover { background-color: #111; }
+        #previewEssay {
+            font-size: 18px;
+        }
+        #previewModal .modal-content {
+            max-width: 800px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar hidden" id="sidebar">
+        <div class="hamburger" id="hamburgerBtn"> &times; Close</div>
+        <button class="create-btn" onclick="createNewEssay()">Create New +</button>
+        <div class="tabs" id="tabs"></div>
+    </div>
+    <div class="main">
+        <div class="top-bar">
+            <div class="hamburger" id="hamburgerOpen">☰ Menu</div>
+            <div class="dark-toggle" id="darkToggle">Toggle Light/Dark</div>
+            <div class="dark-toggle" id="previewToggle">Preview</div>
+        </div>
+        
+        <div class="field">
+            <label for="promptInput">Prompt (optional)</label>
+            <input id="promptInput" />
+        </div>
+        <div class="field">
+            <label for="essayInput">Essay</label>
+            <textarea id="essayInput"></textarea>
+            <div class="counters">
+                Words: <span id="wordCount">0</span> |
+                Chars: <span id="charCount">0</span>
+            </div>
+        </div>
+    </div>
+    <div class="start-modal-backdrop" id="startModal">
+        <div class="start-modal-content">
+            <div class="start-modal-title">Where to?</div>
+            <div class="create-new-block">
+                <div class="start-modal-essay create-new" onclick="createNewEssay()">Create New +</div>
+            </div>
+            <div class="start-modal-list" id="startModalList"></div>
+        </div>
+    </div>
+    <div class="modal-backdrop" id="previewModal">
+        <div class="modal-content">
+            <h2>Essay Preview</h2>
+            <div class="modal-essay" id="previewEssay"></div>
+            <div class="modal-actions">
+                <button class="modal-cancel" onclick="closePreview()">Close</button>
+                <button class="copy-btn" onclick="copyEssay()">Copy Essay</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        let essays = [];
+        let currentEssayId = null;
+        let lastSave = '';
+        let saveInterval;
+
+        const hamburgerBtn = document.getElementById('hamburgerBtn');
+        const hamburgerOpen = document.getElementById('hamburgerOpen');
+        const sidebar = document.getElementById('sidebar');
+        const darkToggle = document.getElementById('darkToggle');
+        const promptInput = document.getElementById('promptInput');
+        const essayInput = document.getElementById('essayInput');
+        const tabsContainer = document.getElementById('tabs');
+        const wordCountEl = document.getElementById('wordCount');
+        const charCountEl = document.getElementById('charCount');
+
+        init();
+
+        function init() {
+            loadTheme();
+            loadEssays();
+            function openStartModal() {
+                const modal = document.getElementById('startModal');
+                const list = document.getElementById('startModalList');
+                list.innerHTML = ''; 
+                // pinned first
+                const pinned = essays.filter(x => x.pinned);
+                const others = essays.filter(x => !x.pinned);
+                pinned.concat(others).forEach((e) => {
+                    const item = document.createElement('div');
+                    item.className = 'start-modal-essay';
+                    item.textContent = e.prompt
+                        ? e.prompt.length > 50
+                            ? `${e.prompt.slice(0, 25)}....${e.prompt.slice(-25)}`
+                            : e.prompt
+                        : `Essay ${e.id}`;
+                    item.onclick = () => {
+                        modal.classList.remove('open');
+                        setTimeout(() => selectEssay(e.id), 300);
+                    };
+                    list.appendChild(item);
+                });
+                requestAnimationFrame(() => modal.classList.add('open'));
+            }
+            renderTabs();
+            setupAutosave();
+            updateCounters();
+            hamburgerBtn.onclick = () => sidebar.classList.toggle('hidden');
+            hamburgerOpen.onclick = () => sidebar.classList.toggle('hidden');
+            darkToggle.onclick = toggleTheme;
+            promptInput.addEventListener('input', () => {
+                updateCounters();
+                saveCurrentEssay();
+                renderTabs();
+            });
+            essayInput.addEventListener('input', () => {
+                updateCounters();
+                saveCurrentEssay();
+            });
+
+            // Added event listeners for selection
+            essayInput.addEventListener('mouseup', updateWordCountBasedOnSelection);
+            essayInput.addEventListener('keyup', updateWordCountBasedOnSelection);
+            
+            openStartModal();
+        }
+
+        function loadTheme() {
+            const savedTheme = localStorage.getItem('appTheme');
+            if (savedTheme === 'dark') document.body.classList.add('dark-mode');
+        }
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('appTheme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+        }
+
+        function setupAutosave() {
+            saveInterval = setInterval(() => {
+                if (promptInput.value || essayInput.value) saveCurrentEssay();
+            }, 5000);
+        }
+
+        function updateCounters() {
+            const text = essayInput.value.trim();
+            wordCountEl.textContent = text ? text.split(/\s+/).length : 0;
+            charCountEl.textContent = text.length;
+        }
+
+        function updateWordCountBasedOnSelection() {
+            const selectionStart = essayInput.selectionStart;
+            const selectionEnd = essayInput.selectionEnd;
+            if (selectionStart !== selectionEnd) {
+                const selectedText = essayInput.value.substring(selectionStart, selectionEnd).trim();
+                const words = selectedText ? selectedText.split(/\s+/).length : 0;
+                wordCountEl.textContent = words;
+            } else {
+                updateCounters();
+            }
+        }
+
+        function saveCurrentEssay() {
+            if (!currentEssayId) return;
+            const essayObj = essays.find(e => e.id === currentEssayId);
+            if (!essayObj) return;
+            const combined = promptInput.value + essayInput.value;
+            if (combined === lastSave) return;
+            lastSave = combined;
+            essayObj.prompt = promptInput.value;
+            essayObj.essay = essayInput.value;
+            localStorage.setItem('essaysData', JSON.stringify(essays));
+        }
+
+        function loadEssays() {
+            const saved = localStorage.getItem('essaysData');
+            essays = saved ? JSON.parse(saved) : [];
+        }
+
+        function renderTabs() {
+            tabsContainer.innerHTML = '';
+            const pinned = essays.filter(x => x.pinned);
+            const others = essays.filter(x => !x.pinned);
+            pinned.concat(others).forEach(e => {
+                const div = document.createElement('div');
+                div.className = 'tab' + (e.pinned ? ' pinned' : '');
+                if (e.id === currentEssayId) div.classList.add('active');
+                div.textContent = e.prompt
+                    ? e.prompt.length > 50
+                        ? `${e.prompt.slice(0, 25)}....${e.prompt.slice(-25)}`
+                        : e.prompt
+                    : `Essay ${e.id}`;
+                const btnContainer = document.createElement('span');
+                const pinIcon = document.createElement('span');
+                pinIcon.textContent = e.pinned ? '📌' : '📍';
+                pinIcon.className = 'pin-btn';
+                pinIcon.onclick = ev => {
+                    ev.stopPropagation();
+                    e.pinned = !e.pinned;
+                    localStorage.setItem('essaysData', JSON.stringify(essays));
+                    renderTabs();
+                };
+                const deleteBtn = document.createElement('span');
+                deleteBtn.textContent = '❌';
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.onclick = ev => {
+                    ev.stopPropagation();
+                    const essayObj = essays.find(x => x.id === e.id);
+                    if (!essayObj) return;
+
+                    const modalBackdrop = document.createElement('div');
+                    modalBackdrop.className = 'modal-backdrop';
+                    const modalContent = document.createElement('div');
+                    modalContent.className = 'modal-content';
+
+                    const modalTitle = document.createElement('h2');
+                    modalTitle.textContent = 'Delete Essay';
+                    modalContent.appendChild(modalTitle);
+
+                    const modalBody = document.createElement('p');
+                    modalBody.textContent = `Are you sure you want to delete the essay titled "${essayObj.prompt}"?`;
+                    modalContent.appendChild(modalBody);
+
+                    // Use a class for the essay block so it respects dark mode
+                    const modalEssay = document.createElement('p');
+                    modalEssay.className = 'modal-essay';
+                    modalEssay.textContent = essayObj.essay;
+                    modalContent.appendChild(modalEssay);
+
+                    const modalActions = document.createElement('div');
+                    modalActions.className = 'modal-actions';
+
+                    const cancelButton = document.createElement('button');
+                    cancelButton.textContent = 'Cancel';
+                    cancelButton.className = 'modal-cancel';
+                    cancelButton.onclick = () => {
+                        modalBackdrop.classList.remove('open');
+                        setTimeout(() => document.body.removeChild(modalBackdrop), 300);
+                    };
+                    modalActions.appendChild(cancelButton);
+
+                    const deleteButton = document.createElement('button');
+                    deleteButton.textContent = 'Delete';
+                    deleteButton.className = 'modal-delete';
+                    deleteButton.onclick = () => {
+                        modalBackdrop.classList.remove('open');
+                        setTimeout(() => {
+                            document.body.removeChild(modalBackdrop);
+                            essays = essays.filter(x => x.id !== e.id);
+                            localStorage.setItem('essaysData', JSON.stringify(essays));
+                            if (currentEssayId === e.id) {
+                                currentEssayId = null;
+                                promptInput.value = '';
+                                essayInput.value = '';
+                            }
+                            renderTabs();
+                        }, 300);
+                    };
+                    modalActions.appendChild(deleteButton);
+
+                    modalContent.appendChild(modalActions);
+                    modalBackdrop.appendChild(modalContent);
+                    document.body.appendChild(modalBackdrop);
+
+                    setTimeout(() => modalBackdrop.classList.add('open'), 10);
+                };
+                btnContainer.appendChild(pinIcon);
+                btnContainer.appendChild(deleteBtn);
+                div.appendChild(btnContainer);
+                div.onclick = () => selectEssay(e.id);
+                tabsContainer.appendChild(div);
+            });
+        }
+
+        function selectEssay(id) {
+            saveCurrentEssay();
+            currentEssayId = id;
+            const essayObj = essays.find(e => e.id === id);
+            if (essayObj) {
+                promptInput.value = essayObj.prompt;
+                essayInput.value = essayObj.essay;
+            } else {
+                promptInput.value = '';
+                essayInput.value = '';
+            }
+            renderTabs();
+            updateCounters();
+        }
+
+        function createNewEssay() {
+            const newId = generateId(8);
+            const newEssay = { id: newId, prompt: '', essay: '', pinned: false };
+            essays.push(newEssay);
+            currentEssayId = newId;
+            localStorage.setItem('essaysData', JSON.stringify(essays));
+            renderTabs();
+            selectEssay(newId);
+            document.getElementById('startModal').classList.remove('open');
+        }
+
+        function generateId(length) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        document.getElementById('previewToggle').addEventListener('click', () => {
+            const previewModal = document.getElementById('previewModal');
+            const previewEssay = document.getElementById('previewEssay');
+            if (currentEssayId) {
+                const essay = essays.find(e => e.id === currentEssayId);
+                if (essay) {
+                    const paragraphs = essay.essay.split('\n').map(p => `<p class="essay-para">${p}</p>`).join('<br>');
+                    previewEssay.innerHTML = paragraphs;
+                    previewModal.classList.add('open');
+                }
+            }
+        });
+
+        function copyEssay() {
+            const previewEssay = document.getElementById('previewEssay').innerText;
+            navigator.clipboard.writeText(previewEssay)
+                .then(() => {
+                    alert('Essay copied to clipboard!');
+                })
+                .catch(err => {
+                    console.error('Failed to copy: ', err);
+                });
+        }
+
+        function closePreview() {
+            document.getElementById('previewModal').classList.remove('open');
+        }
+    </script>
+</body>
+</html>
