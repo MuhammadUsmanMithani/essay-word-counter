@@ -1,5 +1,5 @@
 # essay-word-counter
-A hobby project I manage college admissions essays around November.
+A hobby project I made to manage college admissions essays around November.
 
 ## Roadmap:
 
